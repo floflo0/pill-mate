@@ -1,5 +1,5 @@
 import { FC } from 'react';
-import { BrowserRouter as Router } from 'react-router-dom';
+import { HashRouter as Router } from 'react-router-dom';
 import './App.css';
 import AppRoutes from './AppRoutes.tsx';
 import { ReminderProvider } from './context/ReminderContext.tsx';

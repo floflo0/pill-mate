@@ -13,6 +13,7 @@
 
 .button {
     background-color: var(--blue);
+    font-size: 1rem;
     color: white;
     padding: 8px 16px;
     border-radius: 5px;

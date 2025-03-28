@@ -25,3 +25,13 @@
   background: transparent;
   cursor: pointer;
 }
+
+.button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  font-size: 5vw;
+  font-weight: bold;
+}
+
