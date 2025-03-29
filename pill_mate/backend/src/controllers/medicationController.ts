@@ -11,8 +11,10 @@ import {
     HTTP_404_NOT_FOUND,
 } from '../status';
 
-import { isMedicationUnit, Medication  } from '../models/Medication';
-import { User, UserRole } from '../models/User';
+import { Medication  } from '../models/Medication';
+import { isMedicationUnit  } from '../models/MedicationUnit';
+import { User } from '../models/User';
+import { UserRole } from '../models/UserRole';
 
 export const getMedications = asyncErrorHandler(async (request: Request, response: Response) => {
     assert(request.user !== undefined);

@@ -2,6 +2,10 @@ import assert from 'assert';
 
 import { Request, Response } from 'express';
 
+import { Medication } from '../models/Medication';
+import { Reminder } from '../models/Reminder';
+import { User } from '../models/User';
+import { UserRole } from '../models/UserRole';
 import {
     HTTP_200_OK,
     HTTP_201_CREATED,
@@ -10,9 +14,6 @@ import {
     HTTP_404_NOT_FOUND,
 } from '../status';
 import { asyncErrorHandler, checkUnexpectedKeys, isDateValid, isTimeValid } from '../utils';
-import { Medication } from '../models/Medication';
-import { User, UserRole } from '../models/User';
-import { Reminder } from '../models/Reminder';
 
 export const getReminders = asyncErrorHandler(async (request: Request, response: Response) => {
     assert(request.user !== undefined);

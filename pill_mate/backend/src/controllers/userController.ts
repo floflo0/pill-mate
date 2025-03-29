@@ -1,7 +1,9 @@
 import assert from 'assert';
 
 import { Request, Response } from 'express';
-import { User, UserRole, isUserRole } from '../models/User';
+import { Reminder } from '../models/Reminder';
+import { User } from '../models/User';
+import { UserRole, isUserRole } from '../models/UserRole';
 import {
     HTTP_200_OK,
     HTTP_201_CREATED,
@@ -10,7 +12,6 @@ import {
     HTTP_404_NOT_FOUND,
 } from '../status';
 import { asyncErrorHandler, checkUnexpectedKeys } from '../utils';
-import { Reminder } from '../models/Reminder';
 
 export const me = asyncErrorHandler(async (request: Request, response: Response) => {
     assert(request.user !== undefined);
@@ -62,6 +63,7 @@ export const createUser = asyncErrorHandler(async (request: Request, response: R
         where: {
             homeAssistantUserId: request.homeAssistantUserId,
         },
+        attributes: ['id'],
     });
     if (user !== null) {
         response
@@ -100,6 +102,17 @@ export const getHelpedUserReminders = asyncErrorHandler(async (
         return;
     }
 
+    const id = parseInt(request.params.id, 10);
+
+    if (id === request.user.id) {
+        const reminders = await request.user.getReminders();
+
+        response
+            .status(HTTP_200_OK)
+            .json(reminders);
+        return;
+    }
+
     if (request.user.role === UserRole.HELPED) {
         response
             .status(HTTP_403_FORBIDDEN)
@@ -107,10 +120,9 @@ export const getHelpedUserReminders = asyncErrorHandler(async (
         return;
     }
 
-    const id = parseInt(request.params.id, 10);
-
     const helpedUsers = await request.user.getHelpedUsers({
         where: { id },
+        attributes: ['id'],
     });
     assert(helpedUsers.length <= 1);
     if (helpedUsers.length === 0) {

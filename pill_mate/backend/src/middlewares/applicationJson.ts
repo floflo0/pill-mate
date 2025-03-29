@@ -5,7 +5,7 @@ export const applicationJson = (request: Request, response: Response, next: Next
     if (request.method !== 'GET' && request.get('content-type') !== 'application/json') {
         response
             .status(HTTP_415_UNSUPPORTED_MEDIA_TYPE)
-            .json({ error: 'Unsupported content type. Only application/json is allowed.' });
+            .json({ message: 'Unsupported content type. Only application/json is allowed.' });
         return;
     }
 

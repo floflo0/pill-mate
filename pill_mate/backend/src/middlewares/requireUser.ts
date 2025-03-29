@@ -10,7 +10,7 @@ export const requireUser = async (request: Request, response: Response, next: Ne
     if (user === null) {
         response
             .status(HTTP_401_UNAUTHORIZED)
-            .json({ message: 'The user is not registered.' });
+            .json({ message: 'User not registered.' });
         return;
     }
 

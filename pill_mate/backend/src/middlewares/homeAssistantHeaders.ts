@@ -13,7 +13,7 @@ export const homeAssistantHeaders = (request: Request, response: Response, next:
     if (!isHomeAssistantUserIdValid(homeAssistantUserId)) {
         response
             .status(HTTP_400_BAD_REQUEST)
-            .json({ message: 'Invalid Home Assistant User Id in x-remote-user-id.' });
+            .json({ message: 'Invalid home assistant user id in x-remote-user-id.' });
         return;
     }
     request.homeAssistantUserId = homeAssistantUserId;
