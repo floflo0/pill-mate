@@ -11,8 +11,10 @@ import {
     HTTP_404_NOT_FOUND,
 } from '../status';
 
-import { isMedicationUnit, Medication  } from '../models/Medication';
-import { User, UserRole } from '../models/User';
+import { Medication  } from '../models/Medication';
+import { isMedicationUnit  } from '../models/MedicationUnit';
+import { User } from '../models/User';
+import { UserRole } from '../models/UserRole';
 
 export const getMedications = asyncErrorHandler(async (request: Request, response: Response) => {
     assert(request.user !== undefined);
@@ -21,7 +23,16 @@ export const getMedications = asyncErrorHandler(async (request: Request, respons
 
     response
         .status(HTTP_200_OK)
-        .json(medications);
+        .json(medications.map(({ id, name, indication, quantity, unit, userId }) => {
+            return {
+                id,
+                name,
+                indication,
+                quantity,
+                unit,
+                userId,
+            };
+        }));
 });
 
 /**
@@ -90,7 +101,7 @@ export const createMedication = asyncErrorHandler(async (request: Request, respo
     if (indication !== undefined && indication !== null && typeof indication !== 'string') {
         response
             .status(HTTP_400_BAD_REQUEST)
-            .json({ message: 'Invalid name.' });
+            .json({ message: 'Invalid indication.' });
         return;
     }
 
@@ -136,15 +147,14 @@ export const createMedication = asyncErrorHandler(async (request: Request, respo
         if (request.user.role === UserRole.HELPED) {
             response
                 .status(HTTP_403_FORBIDDEN)
-                .json({ message: 'Your not allowed to add a reminder for an other user.' });
+                .json({ message: 'You are not allowed to add a medication for an other user.' });
             return;
         }
 
         if (request.user.role === UserRole.HELPER) {
             const helpedUsers = await request.user.getHelpedUsers({
-                where: {
-                    id: userId,
-                },
+                where: { id: userId },
+                attributes: ['id'],
             });
             assert(helpedUsers.length <= 1);
             if (helpedUsers.length === 0) {
@@ -155,14 +165,14 @@ export const createMedication = asyncErrorHandler(async (request: Request, respo
             }
 
             user = helpedUsers[0];
+        } else {
+            assert(false, 'unreachable');
         }
-
-        assert(false, 'unreachable');
     }
 
     const medication = await user.createMedication({
         name,
-        indication,
+        indication: indication === null ? undefined : indication,
         quantity,
         unit,
     });
@@ -170,6 +180,7 @@ export const createMedication = asyncErrorHandler(async (request: Request, respo
     response
         .status(HTTP_201_CREATED)
         .json({
+            id: medication.id,
             name: medication.name,
             indication: medication.indication,
             quantity: medication.quantity,
@@ -229,6 +240,27 @@ export const patchMedication = asyncErrorHandler(async (request: Request, respon
         return;
     }
 
+    if (medication.userId !== request.user.id) {
+        if (request.user.role === UserRole.HELPED) {
+            response
+                .status(HTTP_403_FORBIDDEN)
+                .json({ message: 'You are not allowed to modify this medication.' });
+            return;
+        }
+
+        const helpedUsers = await request.user.getHelpedUsers({
+            where: { id: medication.userId },
+            attributes: ['id'],
+        });
+        assert(helpedUsers.length <= 1);
+        if (helpedUsers.length === 0) {
+            response
+                .status(HTTP_403_FORBIDDEN)
+                .json({ message: 'You are not allowed to modify this medication.' });
+            return;
+        }
+    }
+
     if (!checkUnexpectedKeys<PatchMedicationBody>(
         request.body,
         ['name', 'indication', 'quantity', 'unit'],
@@ -286,8 +318,9 @@ export const patchMedication = asyncErrorHandler(async (request: Request, respon
     response
         .status(HTTP_200_OK)
         .json({
+            id: medication.id,
             name: medication.name,
-            indication: medication.indication,
+            indication: medication.indication === null ? undefined : medication.indication,
             quantity: medication.quantity,
             unit: medication.unit,
             userId: medication.userId,
@@ -307,15 +340,36 @@ export const deleteMedication = asyncErrorHandler(async (request: Request, respo
 
     const id = parseInt(request.params.id, 10);
 
-    const nbrOfDeletions = await Medication.destroy({ where: { id } });
-    assert(nbrOfDeletions <= 1);
-
-    if (nbrOfDeletions === 0) {
+    const medication = await Medication.findByPk(id);
+    if (medication === null) {
         response
             .status(HTTP_404_NOT_FOUND)
             .json({ message: 'Medication not found.' });
         return;
     }
+
+    if (medication.userId !== request.user.id) {
+        if (request.user.role === UserRole.HELPED) {
+            response
+                .status(HTTP_403_FORBIDDEN)
+                .json({ message: 'You are not allowed to delete this medication.' });
+            return;
+        }
+
+        const helpedUsers = await request.user.getHelpedUsers({
+            where: { id: medication.userId },
+            attributes: ['id'],
+        });
+        assert(helpedUsers.length <= 1);
+        if (helpedUsers.length === 0) {
+            response
+                .status(HTTP_403_FORBIDDEN)
+                .json({ message: 'You are not allowed to delete this medication.' });
+            return;
+        }
+    }
+
+    await medication.destroy();
 
     response
         .status(HTTP_200_OK)

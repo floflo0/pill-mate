@@ -1,7 +1,15 @@
 import winston from 'winston';
 
+const NODE_ENV = process.env.NODE_ENV || 'production';
+
+const log_levels: { [key: string]: string } = {
+    production: 'info',
+    development: 'debug',
+    test: 'off',
+};
+
 export const createLogger = (label: string) => winston.createLogger({
-    level: process.env.NODE_ENV === 'production' ? 'info' : 'debug',
+    level: log_levels[NODE_ENV],
     format: winston.format.combine(
         winston.format.timestamp({ format: 'YYYY-MM-DD HH:mm:ss' }),
         winston.format.label({ label, message: true }),

@@ -1,16 +1,16 @@
 import { NextFunction, Request, Response } from 'express';
 import { HTTP_400_BAD_REQUEST } from './status';
 
-export const asyncErrorHandler = <T extends Request>(
-    func: (request: T, response: Response) => Promise<void>,
+export const asyncErrorHandler = (
+    func: (request: Request, response: Response) => Promise<void>,
 ) => {
-    return (request: T, response: Response, next: NextFunction) => {
-        Promise.resolve(func(request, response)).catch(next);
+    return async (request: Request, response: Response, next: NextFunction) => {
+        await Promise.resolve(func(request, response)).catch(next);
     };
 };
 
 export const checkUnexpectedKeys = <T extends object>(
-    body: T,
+    body: object,
     allowedKeys: Array<keyof T>,
     response: Response,
 ): boolean => {
@@ -40,7 +40,6 @@ export const isDateValid = (dateStr: unknown): dateStr is string => {
 
     const date = new Date(dateStr);
     const [year, month, day] = dateStr.split('-').map(x => parseInt(x, 10));
-    // console.log(date, year, month, day, date.getMonth());
 
     return date.getFullYear() === year &&
         date.getMonth() + 1 === month &&
@@ -49,4 +48,22 @@ export const isDateValid = (dateStr: unknown): dateStr is string => {
 
 export const isHomeAssistantUserIdValid = (id: unknown): id is string  => {
     return typeof id === 'string' && /^[0-9a-f]{32}$/.test(id);
+};
+
+export const getNextDate = (time: string): Date => {
+    const [hours, minutes] = time.split(':').map(Number);
+    const timeDate = new Date();
+    timeDate.setHours(hours, minutes, 0, 0);
+
+    const nextDate =  new Date();
+    if (nextDate > timeDate) nextDate.setDate(nextDate.getDate() + 1);
+
+    return nextDate;
+};
+
+export const formatDate = (date: Date): string => {
+    const year = date.getFullYear();
+    const month = String(date.getMonth() + 1).padStart(2, '0');
+    const day = String(date.getDate()).padStart(2, '0');
+    return `${year}-${month}-${day}`;
 };

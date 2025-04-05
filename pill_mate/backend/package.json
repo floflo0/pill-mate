@@ -6,6 +6,7 @@
         "start": "node build/index.js",
         "lint": "eslint .",
         "test": "jest",
+        "test-watch": "jest --watch",
         "swagger-generate": "swagger-jsdoc -d swagger.cjs src/**/*.ts",
         "swagger-serve": "swagger-ui-watcher -c ./swagger-config.json swagger.json",
         "swagger": "npm run swagger-generate && npm run swagger-serve"
@@ -32,10 +33,12 @@
     "devDependencies": {
         "@eslint/js": "^9.16.0",
         "@types/jest": "^29.5.14",
+        "@types/supertest": "^6.0.3",
         "@types/swagger-jsdoc": "^6.0.4",
         "eslint": "^9.16.0",
         "eslint-plugin-import": "^2.31.0",
         "jest": "^29.7.0",
+        "supertest": "^7.1.0",
         "swagger-jsdoc": "^6.2.8",
         "swagger-ui-watcher": "^2.1.14",
         "ts-jest": "^29.2.6",

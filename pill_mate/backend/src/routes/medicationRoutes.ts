@@ -38,6 +38,10 @@ router.get('/', requireUser, medicationController.getMedications);
  *     responses:
  *       201:
  *         description: Medication created successfully.
+ *         content:
+ *           application/json:
+ *             schema:
+ *               $ref: '#/components/schemas/Medication'
  *       400:
  *         description: Bad request.
  *         content:

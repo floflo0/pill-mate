@@ -2,6 +2,10 @@ import assert from 'assert';
 
 import { Request, Response } from 'express';
 
+import { Medication } from '../models/Medication';
+import { Reminder } from '../models/Reminder';
+import { User } from '../models/User';
+import { UserRole } from '../models/UserRole';
 import {
     HTTP_200_OK,
     HTTP_201_CREATED,
@@ -9,10 +13,14 @@ import {
     HTTP_403_FORBIDDEN,
     HTTP_404_NOT_FOUND,
 } from '../status';
-import { asyncErrorHandler, checkUnexpectedKeys, isDateValid, isTimeValid } from '../utils';
-import { Medication } from '../models/Medication';
-import { User, UserRole } from '../models/User';
-import { Reminder } from '../models/Reminder';
+import {
+    asyncErrorHandler,
+    checkUnexpectedKeys,
+    formatDate,
+    getNextDate,
+    isDateValid,
+    isTimeValid,
+} from '../utils';
 
 export const getReminders = asyncErrorHandler(async (request: Request, response: Response) => {
     assert(request.user !== undefined);
@@ -21,7 +29,9 @@ export const getReminders = asyncErrorHandler(async (request: Request, response:
 
     response
         .status(HTTP_200_OK)
-        .json(reminders);
+        .json(reminders.map(({ id, time, frequency, quantity, nextDate, medicationId, userId }) => {
+            return { id, time, frequency, quantity, nextDate, medicationId, userId };
+        }));
 });
 
 /**
@@ -132,13 +142,6 @@ export const createReminder = asyncErrorHandler(async (request: Request, respons
         return;
     }
 
-    if (await Medication.findByPk(medicationId) === null) {
-        response
-            .status(HTTP_404_NOT_FOUND)
-            .json({ message: 'Medication not found.' });
-        return;
-    }
-
     let user: User;
     if (userId === undefined || userId === request.user.id) {
         user = request.user;
@@ -153,15 +156,14 @@ export const createReminder = asyncErrorHandler(async (request: Request, respons
         if (request.user.role === UserRole.HELPED) {
             response
                 .status(HTTP_403_FORBIDDEN)
-                .json({ message: 'Your not allowed to add a reminder for an other user.' });
+                .json({ message: 'You are not allowed to add a reminder for an other user.' });
             return;
         }
 
         if (request.user.role === UserRole.HELPER) {
             const helpedUsers = await request.user.getHelpedUsers({
-                where: {
-                    id: userId,
-                },
+                where: { id: userId },
+                attributes: ['id'],
             });
             assert(helpedUsers.length <= 1);
             if (helpedUsers.length === 0) {
@@ -172,17 +174,24 @@ export const createReminder = asyncErrorHandler(async (request: Request, respons
             }
 
             user = helpedUsers[0];
+        } else {
+            assert(false, 'unreachable');
         }
-
-        assert(false, 'unreachable');
     }
 
-    const [hours, minutes] = time.split(':').map(Number);
-    const timeDate = new Date();
-    timeDate.setHours(hours, minutes, 0, 0);
+    const medications = await user.getMedications({
+        where: { id: medicationId },
+        attributes: ['id'],
+    });
+    assert(medications.length <= 1);
+    if (medications.length === 0) {
+        response
+            .status(HTTP_404_NOT_FOUND)
+            .json({ message: 'Medication not found.' });
+        return;
+    }
 
-    const nextDate =  new Date();
-    if (nextDate > timeDate) nextDate.setDate(nextDate.getDate() + 1);
+    const nextDate = getNextDate(time);
 
     const newReminder = await user.createReminder({
         time,
@@ -195,6 +204,7 @@ export const createReminder = asyncErrorHandler(async (request: Request, respons
     response
         .status(HTTP_201_CREATED)
         .json({
+            id: newReminder.id,
             time: newReminder.time,
             frequency: newReminder.frequency,
             quantity: newReminder.quantity,
@@ -257,13 +267,34 @@ export const patchReminder = asyncErrorHandler(async (request: Request, response
     if (reminder === null) {
         response
             .status(HTTP_404_NOT_FOUND)
-            .json({ mesage: 'Reminder not found.' });
+            .json({ message: 'Reminder not found.' });
         return;
     }
 
-    if (!checkUnexpectedKeys<CreateReminderBody>(
+    if (reminder.userId !== request.user.id) {
+        if (request.user.role === UserRole.HELPED) {
+            response
+                .status(HTTP_403_FORBIDDEN)
+                .json({ message: 'You are not allowed to modify this reminder.' });
+            return;
+        }
+
+        const helpedUsers = await request.user.getHelpedUsers({
+            where: { id: reminder.userId },
+            attributes: ['id'],
+        });
+        assert(helpedUsers.length <= 1);
+        if (helpedUsers.length === 0) {
+            response
+                .status(HTTP_403_FORBIDDEN)
+                .json({ message: 'You are not allowed to modify this reminder.' });
+            return;
+        }
+    }
+
+    if (!checkUnexpectedKeys<PatchReminderBody>(
         request.body,
-        ['time', 'frequency', 'quantity', 'medicationId'],
+        ['time', 'frequency', 'quantity', 'nextDate', 'medicationId'],
         response,
     )) return;
 
@@ -278,8 +309,13 @@ export const patchReminder = asyncErrorHandler(async (request: Request, response
         }
 
         reminder.time = time;
+        const [hours, minutes] = time.split(':').map(Number);
+        const nextDate = new Date(reminder.nextDate);
+        nextDate.setHours(hours, minutes, 0, 0);
+        if (nextDate.getTime() < Date.now()) {
+            reminder.nextDate = formatDate(getNextDate(time));
+        }
     }
-
 
     if (frequency !== undefined) {
         if (typeof frequency !== 'number' || !Number.isInteger(frequency) || frequency < 1) {
@@ -291,7 +327,6 @@ export const patchReminder = asyncErrorHandler(async (request: Request, response
 
         reminder.frequency = frequency;
     }
-
 
     if (quantity !== undefined) {
         if (typeof quantity !== 'number' || quantity <= 0.0) {
@@ -305,14 +340,17 @@ export const patchReminder = asyncErrorHandler(async (request: Request, response
     }
 
     if (nextDate !== undefined) {
-        if (typeof nextDate !== 'string' || !isDateValid(nextDate)) {
+        if (!isDateValid(nextDate)) {
             response
                 .status(HTTP_400_BAD_REQUEST)
                 .json({ message: 'Invalid nextDate.' });
             return;
         }
 
-        if (new Date(nextDate).getTime() < Date.now()) {
+        const [hours, minutes] = reminder.time.split(':').map(Number);
+        const nextDateDate = new Date(nextDate);
+        nextDateDate.setHours(hours, minutes, 0, 0);
+        if (nextDateDate.getTime() < Date.now()) {
             response
                 .status(HTTP_400_BAD_REQUEST)
                 .json({ message: 'nextDate must be in the future.' });
@@ -330,10 +368,23 @@ export const patchReminder = asyncErrorHandler(async (request: Request, response
             return;
         }
 
-        if (await Medication.findByPk(medicationId) === null) {
+        const medication = await Medication.findByPk(
+            medicationId,
+            { attributes: ['userId'] },
+        );
+        if (medication === null) {
             response
                 .status(HTTP_404_NOT_FOUND)
                 .json({ message: 'Medication not found.' });
+            return;
+        }
+
+        if (medication.userId !== reminder.userId) {
+            response
+                .status(HTTP_400_BAD_REQUEST)
+                .json({
+                    message: 'This medication doesn\'t belong to the same user as the reminder.',
+                });
             return;
         }
 
@@ -342,10 +393,10 @@ export const patchReminder = asyncErrorHandler(async (request: Request, response
 
     await reminder.save();
 
-
     response
         .status(HTTP_200_OK)
         .json({
+            id: reminder.id,
             time: reminder.time,
             frequency: reminder.frequency,
             quantity: reminder.quantity,
@@ -368,15 +419,36 @@ export const deleteReminder = asyncErrorHandler(async (request: Request, respons
 
     const id = parseInt(request.params.id, 10);
 
-    const nbrOfDeletions = await Reminder.destroy({ where: { id } });
-    assert(nbrOfDeletions <= 1);
-
-    if (nbrOfDeletions === 0) {
+    const reminder = await Reminder.findByPk(id);
+    if (reminder === null) {
         response
             .status(HTTP_404_NOT_FOUND)
             .json({ message: 'Reminder not found.' });
         return;
     }
+
+    if (reminder.userId !== request.user.id) {
+        if (request.user.role === UserRole.HELPED) {
+            response
+                .status(HTTP_403_FORBIDDEN)
+                .json({ message: 'You are not allowed to delete this reminder.' });
+            return;
+        }
+
+        const helpedUsers = await request.user.getHelpedUsers({
+            where: { id: reminder.userId },
+            attributes: ['id'],
+        });
+        assert(helpedUsers.length <= 1);
+        if (helpedUsers.length === 0) {
+            response
+                .status(HTTP_403_FORBIDDEN)
+                .json({ message: 'You are not allowed to delete this reminder.' });
+            return;
+        }
+    }
+
+    await reminder.destroy();
 
     response
         .status(HTTP_200_OK)
